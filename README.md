@@ -3,9 +3,9 @@ convert socks5 proxy to http(s) proxy
 
 ### build
 ```
-go build ./cvtp.go
+go build
 # strip symbols and debug info
-go build -ldflags "-s -w" ./cvtp.go 
+go build -ldflags "-s -w"
 ```
 
 ### usage

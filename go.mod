@@ -1,5 +1,5 @@
-module example.com/mod
+module github.com/fokx/cvtp
 
-go 1.17
+go 1.20
 
 require golang.org/x/net v0.32.0 // indirect
