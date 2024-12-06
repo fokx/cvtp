@@ -5,11 +5,15 @@ import (
 	"golang.org/x/net/proxy"
 	"io"
 	"log"
+	"math/rand"
 	"net"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 )
+
+var logLevel string
 
 func handleHTTP(w http.ResponseWriter, req *http.Request, dialer proxy.Dialer) {
 	tp := http.Transport{
@@ -64,14 +68,23 @@ func transfer(dst io.WriteCloser, src io.ReadCloser) {
 	io.Copy(dst, src)
 }
 
-func serveHTTP(w http.ResponseWriter, req *http.Request, socks5Addr string, bypassPtr bool) {
+func serveHTTP(w http.ResponseWriter, req *http.Request, socks5Addr string, bypassPtr bool, proxyList []string) {
 	d := &net.Dialer{
 		Timeout: 10 * time.Second,
 	}
-	dialer, _ := proxy.SOCKS5("tcp", socks5Addr, nil, d)
-	if bypassPtr {
-		dialer = proxy.Direct
+	var dialer proxy.Dialer = proxy.Direct
+	if !bypassPtr {
+		real_socks5Addr := socks5Addr
+		if len(proxyList) != 0 {
+			n := rand.Int() % len(proxyList)
+			real_socks5Addr := proxyList[n]
+			if logLevel == "debug" {
+				log.Printf("Using upstream %s", real_socks5Addr)
+			}
+		}
+		dialer, _ = proxy.SOCKS5("tcp", real_socks5Addr, nil, d)
 	}
+
 	if req.Method == "CONNECT" {
 		handleTunnel(w, req, dialer)
 	} else {
@@ -79,29 +92,64 @@ func serveHTTP(w http.ResponseWriter, req *http.Request, socks5Addr string, bypa
 	}
 }
 
+type proxyStringList []string
+
+func (s *proxyStringList) String() string {
+	return strings.Join(*s, ",")
+}
+
+func (s *proxyStringList) Set(value string) error {
+	if value == "" {
+		*s = []string{}
+	} else {
+		tmp := strings.Split(value, ",")
+		res := make([]string, 0, len(tmp))
+		for i := range tmp {
+			item := strings.TrimSpace(tmp[i])
+			if item == "" {
+				continue
+			}
+			if _, err := strconv.Atoi(item); err == nil {
+				// if it's a number, assume it's a port number on localhost
+				item = "127.0.0.1:" + item
+			}
+			res = append(res, item)
+		}
+		*s = res
+	}
+	return nil
+}
+
 func main() {
-	listenHostPtr := flag.String("listen", "127.0.0.1", "listening host")
-	listeningPortPtr := flag.Int("to", 4099, "listening port")
-	socks5AddrPtr := flag.String("from", "127.0.0.1:3999", "socks5 addr")
-	bypassPtr := flag.Bool("bypass", false, "whether to bypass the socks5 proxy")
+	var proxylist proxyStringList
+
 	logLevelPtr := flag.String("loglevel", "info", "log level (debug, info)")
+	listenHostPtr := flag.String("host", "127.0.0.1", "listen on host (ip / domain). if set to 'all', will listen on all interfaces (0.0.0.0)")
+	listenPortPtr := flag.Int("port", 4099, "listen on port")
+	socks5ProxyAddrPtr := flag.String("from", "127.0.0.1:3999", "upstream socks5 addr")
+	bypassPtr := flag.Bool("bypass", false, "whether to bypass the socks5 proxy. will ignore '-from' if set")
+	flag.Var(&proxylist, "fromlist", "comma-separated list of proxy upstreams, each will be used randomly for each new connection. \nwill ignore '-from' if set. (default to not set)\nfor each item, will assume it's a port number on localhost if it's a number. \ne.g. 1080,1081,1082 (all localhost ports) or 1080,192.168.1.1:1081,127.0.0.1:5606")
 	flag.Parse()
 
 	if *listenHostPtr == "all" {
 		*listenHostPtr = "0.0.0.0"
 	}
-	log.Printf("Listening on %s:%d", *listenHostPtr, *listeningPortPtr)
-	log.Printf("Log level: %s", *logLevelPtr)
+	logLevel = *logLevelPtr
+	log.Printf("Listening on %s:%d", *listenHostPtr, *listenPortPtr)
+	log.Printf("Log level: %s", logLevel)
 	if *bypassPtr {
 		log.Printf("Bypassing the socks5 proxy")
 	} else {
-		log.Printf("Using the socks5 proxy at %s", *socks5AddrPtr)
+		log.Printf("Using the socks5 proxy at %s", *socks5ProxyAddrPtr)
 	}
-	err := http.ListenAndServe(*listenHostPtr+":"+strconv.Itoa(*listeningPortPtr), http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		if *logLevelPtr == "debug" {
+	if len(proxylist) != 0 {
+		log.Printf("Upstream proxy list: %v", proxylist)
+	}
+	err := http.ListenAndServe(*listenHostPtr+":"+strconv.Itoa(*listenPortPtr), http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		if logLevel == "debug" {
 			log.Printf("Request target address: %s", req.Host)
 		}
-		serveHTTP(w, req, *socks5AddrPtr, *bypassPtr)
+		serveHTTP(w, req, *socks5ProxyAddrPtr, *bypassPtr, proxylist)
 	}))
 	if err != nil {
 		log.Fatalf("Server failed to start: %v", err)
