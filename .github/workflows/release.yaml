@@ -1,8 +1,10 @@
 # .github/workflows/release.yaml
 
 on:
-  push:
-    branches: [ "main" ]
+  #push:
+  #  branches: [ "main" ]
+  release:
+    types: [created]
 permissions:
     contents: write
     packages: write
