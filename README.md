@@ -11,21 +11,23 @@ go build -ldflags "-s -w"
 ### usage
 ```
 Usage of ./cvtp:
-  -from string
-        upstream socks5 addr (default "127.0.0.1:3999")
-  -fromlist value
+  ## basic:
+  -from string (optional, default "127.0.0.1:3999")
+        upstream socks5 addr
+  -host string (optional, default "127.0.0.1")
+        listening on host (ip / domain). if set to 'all', will listen on all interfaces (0.0.0.0) 
+  -port int (optional, default 4099)
+        listening on port 
+ ## advanced:
+  -fromlist value (optional, not set by default)
         comma-separated list of proxy upstreams, each will be used randomly for each new connection. 
-        will ignore '-from' if set. (default to not set)
+        will ignore '-from' if set. 
         for each item, will assume it's a port number on localhost if it's a number. 
         e.g. 1080,1081,1082 (all localhost ports) or 1080,192.168.1.1:1081,127.0.0.1:5606
-  -bypass
-        whether to bypass the socks5 proxy. will ignore '-from' if set (default to not set)
-  -host string
-        listen on host (ip / domain). if set to 'all', will listen on all interfaces (0.0.0.0) (default "127.0.0.1")
-  -port int
-        listen on port (default 4099)
- -loglevel string
-    log level (debug, info) (default "info")
+  -bypass (optional, not set by default)
+        whether to bypass the socks5 proxy. will ignore '-from' if set
+  -loglevel string (optional, default to "info")
+        log level (debug, info) 
 ```
 
 ### Examples 
